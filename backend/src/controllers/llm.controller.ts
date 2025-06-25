@@ -7,7 +7,11 @@ export class LlmController {
 
   @Post('generate')
   async generate(@Body() body: { prompt: string; duration: number }) {
-    return this.llmService.generateCode(body.prompt, body.duration);
+    const result = await this.llmService.generateCode(body.prompt, body.duration);
+    if (result.code.includes('LLM code missing render or scene.add, using fallback.')) {
+      console.warn('LLM code missing render or scene.add, using fallback.');
+    }
+    return result;
   }
 
   @Post('reinforce')

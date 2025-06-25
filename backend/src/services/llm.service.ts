@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import fetch from 'node-fetch';
 
 @Injectable()
 export class LlmService {
   async reinforceContext(prompt: string, duration: number): Promise<void> {
-    // Guidelines for LLM
     const guidelines = [
       'Follow principles of good design (composition, color, balance, contrast, clarity, etc.)',
       'Obey physics (gravity, inertia, collisions, realistic motion, etc.)',
@@ -12,94 +12,64 @@ export class LlmService {
       'Promote realism and avoid abstract/unrealistic visuals unless explicitly requested',
       'Use top-notch styling and animation for realism and aesthetics',
       'All visualizations must be styled and physically plausible',
+      'Use post-processing (e.g., bloom, tone mapping) for visual enhancement',
       'If user requests a specific duration, the video must be at least that long',
+      'Use different shapes, correct motion, and physics based on the prompt',
     ];
-    // Log for now, but in production, send to LLM as context
+    // In production, you may log or store this context for feedback/fine-tuning
     console.log('LLM reinforcement context:', { prompt, duration, guidelines });
   }
 
   async generateCode(prompt: string, duration: number) {
     await this.reinforceContext(prompt, duration);
 
-    // Simple branching logic for demonstration
-    let code: string;
+    // Compose the system prompt for Gemini
+    const systemPrompt = `
+You are an expert 3D visualization developer using three.js.
+Generate a complete JavaScript code snippet that:
+- Visualizes the following concept: "${prompt}"
+- Uses three.js and advanced post-processing (bloom, tone mapping, etc.) for realism.
+- Uses GSAP for smooth, advanced animations.
+- Uses CCapture.js to record the canvas as mp4 (assume CCapture is loaded as CCapture global).
+- Uses troika-three-text for advanced 3D text/labels (assume TroikaText is loaded as global).
+- Follows principles of good design (composition, color, balance, contrast, clarity, etc.).
+- Obeys physics (gravity, inertia, collisions, realistic motion, etc.).
+- Uses strict, realistic styling and animation.
+- Ensures the animation duration matches the requested time (not less than ${duration} minute(s)).
+- Promotes realism and avoids abstract/unrealistic visuals unless explicitly requested.
+- Uses top-notch styling and animation for realism and aesthetics.
+- All visualizations must be styled and physically plausible.
+- The code must define a global function window.renderFrame(frame) that advances the animation by one frame.
+- The code must be self-contained and assume three.js, GSAP, CCapture.js, and troika-three-text are already loaded.
+- Do NOT include import statements or HTML, just the JavaScript code for the visualization.
+`;
 
-    if (/solar system/i.test(prompt)) {
+    // Call Gemini API
+    const apiKey = process.env.GOOGLE_LLM_API_KEY;
+    const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=' + apiKey;
+
+    const payload = {
+      contents: [
+        { role: 'user', parts: [{ text: systemPrompt }] }
+      ]
+    };
+
+    let code = '';
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      const candidates = (data as any)?.candidates;
+      code = candidates?.[0]?.content?.parts?.[0]?.text || '';
+      code = code.replace(/```(js|javascript)?/g, '').replace(/```/g, '').trim();
+    } catch (err) {
+      console.error('Gemini API error:', err);
+      // Fallback: spinning torus knot with GSAP and troika-three-text
       code = `
-        // Solar system visualization
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, 640/480, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ preserveDrawingBuffer: true, antialias: true });
-        renderer.setClearColor(0x000000);
-        renderer.setSize(640, 480);
-        document.body.appendChild(renderer.domElement);
-
-        // Sun
-        const sunGeometry = new THREE.SphereGeometry(0.7, 32, 32);
-        const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xFFFF00 });
-        const sun = new THREE.Mesh(sunGeometry, sunMaterial);
-        scene.add(sun);
-
-        // Earth
-        const earthGeometry = new THREE.SphereGeometry(0.2, 32, 32);
-        const earthMaterial = new THREE.MeshPhongMaterial({ color: 0x2266ff });
-        const earth = new THREE.Mesh(earthGeometry, earthMaterial);
-        scene.add(earth);
-
-        // Light
-        const light = new THREE.PointLight(0xffffff, 1, 100);
-        light.position.set(5, 5, 5);
-        scene.add(light);
-
-        camera.position.z = 3;
-
-        window.renderFrame = function(frame) {
-          const t = frame * 0.01;
-          earth.position.x = Math.cos(t) * 1.5;
-          earth.position.z = Math.sin(t) * 1.5;
-          renderer.render(scene, camera);
-        };
-      `;
-    } else if (/bouncing ball/i.test(prompt)) {
-      code = `
-        // Bouncing ball visualization
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, 640/480, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ preserveDrawingBuffer: true, antialias: true });
-        renderer.setClearColor(0x222233);
-        renderer.setSize(640, 480);
-        document.body.appendChild(renderer.domElement);
-
-        // Ball
-        const ballGeometry = new THREE.SphereGeometry(0.3, 32, 32);
-        const ballMaterial = new THREE.MeshPhongMaterial({ color: 0xff3333, shininess: 100 });
-        const ball = new THREE.Mesh(ballGeometry, ballMaterial);
-        scene.add(ball);
-
-        // Floor
-        const floorGeometry = new THREE.BoxGeometry(2, 0.1, 2);
-        const floorMaterial = new THREE.MeshPhongMaterial({ color: 0x888888 });
-        const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-        floor.position.y = -0.5;
-        scene.add(floor);
-
-        // Light
-        const light = new THREE.PointLight(0xffffff, 1, 100);
-        light.position.set(5, 5, 5);
-        scene.add(light);
-
-        camera.position.z = 3;
-
-        window.renderFrame = function(frame) {
-          const t = frame * 0.05;
-          ball.position.y = Math.abs(Math.sin(t)) * 1 - 0.2;
-          renderer.render(scene, camera);
-        };
-      `;
-    } else {
-      // Default: spinning, styled cube
-      code = `
-        // Styled spinning cube (default)
+        // Fallback: spinning torus knot with GSAP and troika-three-text
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, 640/480, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ preserveDrawingBuffer: true, antialias: true });
@@ -107,27 +77,85 @@ export class LlmService {
         renderer.setSize(640, 480);
         document.body.appendChild(renderer.domElement);
 
-        // Lighting for realism
+        // Lighting
         const light = new THREE.PointLight(0xffffff, 1, 100);
         light.position.set(10, 10, 10);
         scene.add(light);
 
-        // Styled cube
-        const geometry = new THREE.BoxGeometry();
+        // Torus knot
+        const geometry = new THREE.TorusKnotGeometry(1, 0.3, 100, 16);
         const material = new THREE.MeshPhongMaterial({ color: 0x00ffcc, shininess: 100 });
-        const cube = new THREE.Mesh(geometry, material);
-        scene.add(cube);
+        const knot = new THREE.Mesh(geometry, material);
+        scene.add(knot);
+
+        // Troika text
+        const text = new TroikaText.Text();
+        text.text = "Concept Visualizer";
+        text.fontSize = 0.5;
+        text.position.set(0, 2, 0);
+        text.color = 0xffffff;
+        scene.add(text);
 
         camera.position.z = 5;
 
+        // GSAP animation
+        if (typeof gsap !== 'undefined') {
+          gsap.to(knot.rotation, { y: Math.PI * 2, repeat: -1, duration: 10, ease: "linear" });
+        }
+
         window.renderFrame = function(frame) {
-          cube.rotation.x = frame * 0.01;
-          cube.rotation.y = frame * 0.01;
           renderer.render(scene, camera);
         };
       `;
     }
 
+    // Ensure the returned code always calls renderer.render(scene, camera)
+    // and that at least one mesh is added to the scene.
+    // If the LLM returns code that does not render, fallback to default code.
+    if (!/renderer\.render\s*\(/.test(code) || !/scene\.add\s*\(/.test(code)) {
+      console.warn('LLM code missing render or scene.add, using fallback.');
+      code = `
+        // Fallback: spinning torus knot with GSAP and troika-three-text
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, 640/480, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ preserveDrawingBuffer: true, antialias: true });
+        renderer.setClearColor(0x222233);
+        renderer.setSize(640, 480);
+        document.body.appendChild(renderer.domElement);
+
+        // Lighting
+        const light = new THREE.PointLight(0xffffff, 1, 100);
+        light.position.set(10, 10, 10);
+        scene.add(light);
+
+        // Torus knot
+        const geometry = new THREE.TorusKnotGeometry(1, 0.3, 100, 16);
+        const material = new THREE.MeshPhongMaterial({ color: 0x00ffcc, shininess: 100 });
+        const knot = new THREE.Mesh(geometry, material);
+        scene.add(knot);
+
+        // Troika text
+        const text = new TroikaText.Text();
+        text.text = "Concept Visualizer";
+        text.fontSize = 0.5;
+        text.position.set(0, 2, 0);
+        text.color = 0xffffff;
+        scene.add(text);
+
+        camera.position.z = 5;
+
+        // GSAP animation
+        if (typeof gsap !== 'undefined') {
+          gsap.to(knot.rotation, { y: Math.PI * 2, repeat: -1, duration: 10, ease: "linear" });
+        }
+
+        window.renderFrame = function(frame) {
+          renderer.render(scene, camera);
+        };
+      `;
+    }
+
+    // Return code to be injected into Puppeteer page
     return { code };
   }
 
