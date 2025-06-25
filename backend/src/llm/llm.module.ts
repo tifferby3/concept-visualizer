@@ -13,7 +13,7 @@ import { LlmOrchestrationService } from '../services/llm-orchestration.service';
     PhysicsService,
     MathematicsService,
     ShapesService,
-    LlmOrchestrationService, // Register orchestration service
+    LlmOrchestrationService, // <-- Ensure this is provided here
   ],
   exports: [
     LlmService,

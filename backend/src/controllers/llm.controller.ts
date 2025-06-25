@@ -6,7 +6,7 @@ import { LlmOrchestrationService } from '../services/llm-orchestration.service';
 export class LlmController {
   constructor(
     private readonly llmService: LlmService,
-    private readonly orchestration: LlmOrchestrationService // Inject orchestration service
+    private readonly orchestration: LlmOrchestrationService
   ) {}
 
   @Post('generate')
