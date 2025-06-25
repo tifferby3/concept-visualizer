@@ -3,7 +3,7 @@ import fetch from 'node-fetch';
 
 @Injectable()
 export class LlmService {
-  async reinforceContext(prompt: string, duration: number): Promise<void> {
+  async reinforceContext(prompt: string, duration: number, mode?: string): Promise<void> {
     const guidelines = [
       'Follow principles of good design (composition, color, balance, contrast, clarity, etc.)',
       'Obey physics (gravity, inertia, collisions, realistic motion, etc.)',
@@ -20,28 +20,20 @@ export class LlmService {
     console.log('LLM reinforcement context:', { prompt, duration, guidelines });
   }
 
-  async generateCode(prompt: string, duration: number) {
-    await this.reinforceContext(prompt, duration);
+  async generateCode(prompt: string, duration: number, mode?: string) {
+    await this.reinforceContext(prompt, duration, mode);
 
-    // Compose the system prompt for Gemini
+    // Enhanced system prompt for Gemini
     const systemPrompt = `
-You are an expert 3D visualization developer using three.js.
+You are an expert 3D visualization developer.
 Generate a complete JavaScript code snippet that:
 - Visualizes the following concept: "${prompt}"
-- Uses three.js and advanced post-processing (bloom, tone mapping, etc.) for realism.
-- Uses GSAP for smooth, advanced animations.
-- Uses CCapture.js to record the canvas as mp4 (assume CCapture is loaded as CCapture global).
-- Uses troika-three-text for advanced 3D text/labels (assume TroikaText is loaded as global).
-- Follows principles of good design (composition, color, balance, contrast, clarity, etc.).
-- Obeys physics (gravity, inertia, collisions, realistic motion, etc.).
-- Uses strict, realistic styling and animation.
-- Ensures the animation duration matches the requested time (not less than ${duration} minute(s)).
-- Promotes realism and avoids abstract/unrealistic visuals unless explicitly requested.
-- Uses top-notch styling and animation for realism and aesthetics.
-- All visualizations must be styled and physically plausible.
-- The code must define a global function window.renderFrame(frame) that advances the animation by one frame.
-- The code must be self-contained and assume three.js, GSAP, CCapture.js, and troika-three-text are already loaded.
+- Uses ${mode === 'advanced' ? 'babylon.js' : 'three.js'}${mode === 'pro' ? ' with post-processing, GSAP, and troika-three-text' : ''}.
+- The code MUST include at least one call to scene.add(...) and at least one call to renderer.render(scene, camera) (or engine.runRenderLoop for babylon.js).
+- The code MUST define a global function window.renderFrame(frame) that advances the animation by one frame and calls renderer.render(scene, camera) (or equivalent).
+- The code must be self-contained and assume all required libraries are loaded.
 - Do NOT include import statements or HTML, just the JavaScript code for the visualization.
+- Follows principles of good design, physics, and realism.
 `;
 
     // Call Gemini API
@@ -65,6 +57,7 @@ Generate a complete JavaScript code snippet that:
       const candidates = (data as any)?.candidates;
       code = candidates?.[0]?.content?.parts?.[0]?.text || '';
       code = code.replace(/```(js|javascript)?/g, '').replace(/```/g, '').trim();
+      console.log('LLM generated code:', code);
     } catch (err) {
       console.error('Gemini API error:', err);
       // Fallback: spinning torus knot with GSAP and troika-three-text
@@ -104,58 +97,40 @@ Generate a complete JavaScript code snippet that:
         }
 
         window.renderFrame = function(frame) {
+          knot.rotation.x = frame * 0.01;
+          knot.rotation.y = frame * 0.01;
           renderer.render(scene, camera);
         };
       `;
     }
 
-    // Ensure the returned code always calls renderer.render(scene, camera)
-    // and that at least one mesh is added to the scene.
-    // If the LLM returns code that does not render, fallback to default code.
-    if (!/renderer\.render\s*\(/.test(code) || !/scene\.add\s*\(/.test(code)) {
-      console.warn('LLM code missing render or scene.add, using fallback.');
-      code = `
-        // Fallback: spinning torus knot with GSAP and troika-three-text
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, 640/480, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ preserveDrawingBuffer: true, antialias: true });
-        renderer.setClearColor(0x222233);
-        renderer.setSize(640, 480);
-        document.body.appendChild(renderer.domElement);
-
-        // Lighting
-        const light = new THREE.PointLight(0xffffff, 1, 100);
-        light.position.set(10, 10, 10);
-        scene.add(light);
-
-        // Torus knot
-        const geometry = new THREE.TorusKnotGeometry(1, 0.3, 100, 16);
-        const material = new THREE.MeshPhongMaterial({ color: 0x00ffcc, shininess: 100 });
-        const knot = new THREE.Mesh(geometry, material);
-        scene.add(knot);
-
-        // Troika text
-        const text = new TroikaText.Text();
-        text.text = "Concept Visualizer";
-        text.fontSize = 0.5;
-        text.position.set(0, 2, 0);
-        text.color = 0xffffff;
-        scene.add(text);
-
-        camera.position.z = 5;
-
-        // GSAP animation
-        if (typeof gsap !== 'undefined') {
-          gsap.to(knot.rotation, { y: Math.PI * 2, repeat: -1, duration: 10, ease: "linear" });
+    // Post-process: inject minimal rendering logic if missing
+    let needsInject = false;
+    if (!/scene\.add\s*\(/.test(code)) {
+      code += `
+        // Injected: add a default mesh to the scene if missing
+        if (typeof THREE !== 'undefined' && typeof scene !== 'undefined') {
+          const geometry = new THREE.BoxGeometry();
+          const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+          const mesh = new THREE.Mesh(geometry, material);
+          scene.add(mesh);
         }
-
-        window.renderFrame = function(frame) {
-          renderer.render(scene, camera);
-        };
       `;
+      needsInject = true;
+    }
+    if (!/renderer\.render\s*\(/.test(code) && !/engine\.runRenderLoop\s*\(/.test(code)) {
+      code += `
+        // Injected: ensure rendering occurs
+        if (typeof renderer !== 'undefined' && typeof scene !== 'undefined' && typeof camera !== 'undefined') {
+          renderer.render(scene, camera);
+        }
+      `;
+      needsInject = true;
+    }
+    if (needsInject) {
+      console.warn('LLM code was missing required rendering logic. Injected minimal rendering code.');
     }
 
-    // Return code to be injected into Puppeteer page
     return { code };
   }
 

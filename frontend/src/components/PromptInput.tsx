@@ -1,26 +1,20 @@
 import React from 'react';
 
-interface PromptInputProps {
+interface Props {
   prompt: string;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
-  loading: boolean;
+  setPrompt: (v: string) => void;
+  disabled?: boolean;
 }
 
-const PromptInput: React.FC<PromptInputProps> = ({ prompt, onChange, onSubmit, loading }) => (
-  <div style={{ marginBottom: 16 }}>
-    <input
-      type="text"
-      value={prompt}
-      onChange={e => onChange(e.target.value)}
-      placeholder="Describe your concept..."
-      style={{ width: 400, marginRight: 8 }}
-      disabled={loading}
-    />
-    <button onClick={onSubmit} disabled={loading || !prompt}>
-      {loading ? 'Generating...' : 'Generate'}
-    </button>
-  </div>
+const PromptInput: React.FC<Props> = ({ prompt, setPrompt, disabled }) => (
+  <input
+    type="text"
+    value={prompt}
+    onChange={e => setPrompt(e.target.value)}
+    placeholder="Describe your concept..."
+    style={{ width: 300 }}
+    disabled={disabled}
+  />
 );
 
 export default PromptInput;

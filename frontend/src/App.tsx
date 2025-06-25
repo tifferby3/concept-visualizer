@@ -1,37 +1,30 @@
 import React, { useState } from 'react';
-
-const DURATIONS = [
-  { label: '1 min', value: 1 },
-  { label: '3 min', value: 3 },
-  { label: '5 min', value: 5 },
-  { label: '10 min', value: 10 },
-  { label: '20 min', value: 20 },
-  { label: '30 min', value: 30 },
-];
+import PromptInput from './components/PromptInput';
+import DurationSelect from './components/DurationSelect';
+import ModeSelect from './components/ModeSelect';
+import VideoPreview from './components/VideoPreview';
 
 const App: React.FC = () => {
   const [prompt, setPrompt] = useState('');
   const [duration, setDuration] = useState<number>(1);
+  const [mode, setMode] = useState<string>('basic');
   const [loading, setLoading] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [pingResult, setPingResult] = useState<string | null>(null);
-
-  const handlePromptChange = (value: string) => setPrompt(value);
-
-  const handleDurationChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setDuration(Number(e.target.value));
-  };
 
   const handleSubmit = async () => {
     setLoading(true);
     setVideoUrl(null);
     try {
+      // Fix: Use (import.meta as any).env for Vite env vars
+      const apiUrl =
+        (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001';
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/video/generate`,
+        `${apiUrl}/video/generate`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, duration }),
+          body: JSON.stringify({ prompt, duration, mode }),
         }
       );
       if (!response.ok) throw new Error('Video generation failed');
@@ -48,9 +41,9 @@ const App: React.FC = () => {
   const testBackend = async () => {
     setPingResult('Testing...');
     try {
-      const res = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/health/ping`
-      );
+      const apiUrl =
+        (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001';
+      const res = await fetch(`${apiUrl}/health/ping`);
       const data = await res.json();
       setPingResult(data.message || 'No response');
     } catch (e) {
@@ -67,37 +60,31 @@ const App: React.FC = () => {
       {pingResult && (
         <div style={{ marginBottom: 16 }}>Backend says: {pingResult}</div>
       )}
-      <div style={{ marginBottom: 16 }}>
-        <input
-          type="text"
-          value={prompt}
-          onChange={(e: { target: { value: string; }; }) => handlePromptChange(e.target.value)}
-          placeholder="Describe your concept..."
-          style={{ width: 400, marginRight: 8 }}
+      <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
+        <PromptInput
+          prompt={prompt}
+          setPrompt={setPrompt}
           disabled={loading}
         />
-        <select value={duration} onChange={handleDurationChange} disabled={loading} style={{ marginRight: 8 }}>
-          {DURATIONS.map(d => (
-            <option key={d.value} value={d.value}>{d.label}</option>
-          ))}
-        </select>
+        <DurationSelect
+          duration={duration}
+          setDuration={setDuration}
+          disabled={loading}
+        />
+        <ModeSelect
+          mode={mode}
+          setMode={setMode}
+          disabled={loading}
+        />
         <button onClick={handleSubmit} disabled={loading || !prompt}>
           {loading ? 'Generating...' : 'Generate'}
         </button>
       </div>
       {loading && <div>Loading...</div>}
-      {videoUrl && (
-        <div style={{ marginTop: 24 }}>
-          <video src={videoUrl} controls width={600} />
-          <div>
-            <a href={videoUrl} download="concept-visualization.mp4">
-              Download Video
-            </a>
-          </div>
-        </div>
-      )}
+      <VideoPreview videoUrl={videoUrl} />
     </div>
   );
 };
 
 export default App;
+
