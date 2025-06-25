@@ -4,11 +4,24 @@ import { LlmService } from '../services/llm.service';
 import { PhysicsService } from '../services/physics.service';
 import { MathematicsService } from '../services/mathematics.service';
 import { ShapesService } from '../services/shapes.service';
+import { LlmOrchestrationService } from '../services/llm-orchestration.service';
 
 @Module({
   controllers: [LlmController],
-  providers: [LlmService, PhysicsService, MathematicsService, ShapesService],
-  exports: [LlmService, PhysicsService, MathematicsService, ShapesService],
+  providers: [
+    LlmService,
+    PhysicsService,
+    MathematicsService,
+    ShapesService,
+    LlmOrchestrationService, // Register orchestration service
+  ],
+  exports: [
+    LlmService,
+    PhysicsService,
+    MathematicsService,
+    ShapesService,
+    LlmOrchestrationService,
+  ],
 })
 export class LlmModule {}
 
