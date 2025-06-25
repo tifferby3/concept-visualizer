@@ -23,7 +23,7 @@ export class LlmService {
   async generateCode(prompt: string, duration: number, mode?: string) {
     await this.reinforceContext(prompt, duration, mode);
 
-    // Enhanced system prompt for Gemini
+    // Stronger system prompt to force LLM to generate valid code
     const systemPrompt = `
 You are an expert 3D visualization developer.
 Generate a complete JavaScript code snippet that:
@@ -31,9 +31,19 @@ Generate a complete JavaScript code snippet that:
 - Uses ${mode === 'advanced' ? 'babylon.js' : 'three.js'}${mode === 'pro' ? ' with post-processing, GSAP, and troika-three-text' : ''}.
 - The code MUST include at least one call to scene.add(...) and at least one call to renderer.render(scene, camera) (or engine.runRenderLoop for babylon.js).
 - The code MUST define a global function window.renderFrame(frame) that advances the animation by one frame and calls renderer.render(scene, camera) (or equivalent).
+- The code MUST create at least one visible object and animate it based on the frame argument.
 - The code must be self-contained and assume all required libraries are loaded.
 - Do NOT include import statements or HTML, just the JavaScript code for the visualization.
-- Follows principles of good design, physics, and realism.
+- If you do not understand the prompt, generate a spinning cube as a fallback, but always include scene.add and renderer.render.
+- Example:
+  const geometry = new THREE.BoxGeometry();
+  const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+  const cube = new THREE.Mesh(geometry, material);
+  scene.add(cube);
+  window.renderFrame = function(frame) {
+    cube.rotation.x = frame * 0.01;
+    renderer.render(scene, camera);
+  };
 `;
 
     // Call Gemini API
@@ -128,7 +138,10 @@ Generate a complete JavaScript code snippet that:
       needsInject = true;
     }
     if (needsInject) {
-      console.warn('LLM code was missing required rendering logic. Injected minimal rendering code.');
+      console.warn(
+        '[LlmService] LLM code was missing required rendering logic. Injected minimal rendering code. ' +
+        'Please review your LLM prompt and ensure the LLM is returning valid, animated code.'
+      );
     }
 
     return { code };

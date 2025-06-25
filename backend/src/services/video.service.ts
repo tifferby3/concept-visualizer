@@ -19,7 +19,7 @@ export class VideoService {
     const width = 640;
     const height = 480;
     const fps = 30;
-    const frameCount = Math.max(duration * 60, 1) * fps; // duration in minutes, ensure at least 1 frame
+    const frameCount = Math.max(duration * 60, 1) * fps;
 
     // Clean up previous files
     if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
@@ -36,6 +36,11 @@ export class VideoService {
 
     // Log the code for debugging and validation
     console.log('[VideoService] Using code for rendering:\n', code);
+
+    // Error handler: If code is empty or obviously invalid, throw an error
+    if (!code || code.trim().length < 20) {
+      throw new Error('[VideoService] LLM did not generate any usable scene code.');
+    }
 
     // 2. Launch Puppeteer and render frames
     const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
@@ -58,22 +63,28 @@ export class VideoService {
             try {
               ${code}
             } catch (err) {
-              document.body.innerHTML = '<pre style="color:red;">' + err + '</pre>';
+              document.body.innerHTML = '<pre style="color:red;">Render error: ' + err + '</pre>';
+              window.__sceneRenderError = err && err.toString();
             }
           });
         </script>
       </body>
       </html>
     `;
-    // Use waitUntil: 'domcontentloaded' to avoid navigation timeout
     await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-    // 4. Render and capture frames
+    // 4. Render and capture frames, with error detection
+    let renderError = null;
     for (let frame = 0; frame < frameCount; frame++) {
       await page.evaluate((f) => {
         // @ts-ignore
         window.renderFrame && window.renderFrame(f);
       }, frame);
+      // Check for runtime errors in the browser context
+      renderError = await page.evaluate(() => (window as any).__sceneRenderError || null);
+      if (renderError) {
+        throw new Error(`[VideoService] Error during scene rendering: ${renderError}`);
+      }
       const framePath = path.join(framesDir, `frame_${String(frame).padStart(6, '0')}.png`);
       await page.screenshot({ path: framePath as `${string}.png` });
     }
