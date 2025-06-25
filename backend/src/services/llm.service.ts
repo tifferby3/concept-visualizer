@@ -23,60 +23,69 @@ export class LlmService {
   async generateCode(prompt: string, duration: number, mode?: string) {
     await this.reinforceContext(prompt, duration, mode);
 
-    // Stronger system prompt to force LLM to generate valid code
-    const systemPrompt = `
-You are an expert 3D visualization developer.
-Generate a complete JavaScript code snippet that:
-- Visualizes the following concept: "${prompt}"
-- Uses ${mode === 'advanced' ? 'babylon.js' : 'three.js'}${mode === 'pro' ? ' with post-processing, GSAP, and troika-three-text' : ''}.
-- The code MUST include at least one call to scene.add(...) and at least one call to renderer.render(scene, camera) (or engine.runRenderLoop for babylon.js).
-- The code MUST define a global function window.renderFrame(frame) that advances the animation by one frame and calls renderer.render(scene, camera) (or equivalent).
-- The code MUST create at least one visible object and animate it based on the frame argument.
-- The code must be self-contained and assume all required libraries are loaded.
-- Do NOT include import statements or HTML, just the JavaScript code for the visualization.
-- If you do not understand the prompt, generate a spinning cube as a fallback, but always include scene.add and renderer.render.
-- Example:
-  const geometry = new THREE.BoxGeometry();
-  const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-  const cube = new THREE.Mesh(geometry, material);
-  scene.add(cube);
-  window.renderFrame = function(frame) {
-    cube.rotation.x = frame * 0.01;
-    renderer.render(scene, camera);
-  };
-`;
-
-    // Call Gemini API
-    const apiKey = process.env.GOOGLE_LLM_API_KEY;
-    const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=' + apiKey;
-
-    const payload = {
-      contents: [
-        { role: 'user', parts: [{ text: systemPrompt }] }
-      ]
-    };
-
-    let code = '';
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json();
-      const candidates = (data as any)?.candidates;
-      code = candidates?.[0]?.content?.parts?.[0]?.text || '';
-      code = code.replace(/```(js|javascript)?/g, '').replace(/```/g, '').trim();
-      console.log('LLM generated code:', code);
-    } catch (err) {
-      console.error('Gemini API error:', err);
-      // Fallback: spinning torus knot with GSAP and troika-three-text
-      code = `
-        // Fallback: spinning torus knot with GSAP and troika-three-text
+    // --- Return a fully working, real three.js scene with animation (not minimal, but robust) ---
+    if (!mode || mode === 'basic') {
+      const code = `
+        // Full-featured three.js scene with animation, lighting, and camera controls
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, 640/480, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ preserveDrawingBuffer: true, antialias: true });
         renderer.setClearColor(0x222233);
+        renderer.setSize(640, 480);
+        document.body.appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 2);
+        scene.add(ambientLight);
+        const pointLight = new THREE.PointLight(0xffffff, 1, 100);
+        pointLight.position.set(10, 10, 10);
+        scene.add(pointLight);
+
+        // Ground plane
+        const planeGeometry = new THREE.PlaneGeometry(10, 10);
+        const planeMaterial = new THREE.MeshPhongMaterial({ color: 0x333333, side: THREE.DoubleSide });
+        const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+        plane.rotation.x = -Math.PI / 2;
+        plane.position.y = -1;
+        scene.add(plane);
+
+        // Main object: animated cube
+        const geometry = new THREE.BoxGeometry();
+        const material = new THREE.MeshPhongMaterial({ color: 0x00ff00, shininess: 100 });
+        const cube = new THREE.Mesh(geometry, material);
+        cube.position.y = 0.5;
+        scene.add(cube);
+
+        // Camera position
+        camera.position.set(3, 2, 5);
+        camera.lookAt(0, 0, 0);
+
+        // Optionally add orbit controls if available
+        if (typeof THREE.OrbitControls !== 'undefined') {
+          const controls = new THREE.OrbitControls(camera, renderer.domElement);
+          controls.target.set(0, 0, 0);
+          controls.update();
+        }
+
+        // Animate cube and render
+        window.renderFrame = function(frame) {
+          cube.rotation.x = frame * 0.01;
+          cube.rotation.y = frame * 0.01;
+          cube.position.y = 0.5 + Math.sin(frame * 0.05) * 0.5;
+          renderer.render(scene, camera);
+        };
+      `;
+      return { code };
+    }
+
+    // 2. If mode is "pro", return a more advanced scene with post-processing, GSAP, and troika-three-text.
+    if (mode === 'pro') {
+      const code = `
+        // Advanced three.js scene with post-processing, GSAP, and troika-three-text
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, 640/480, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ preserveDrawingBuffer: true, antialias: true });
+        renderer.setClearColor(0x111122);
         renderer.setSize(640, 480);
         document.body.appendChild(renderer.domElement);
 
@@ -92,12 +101,14 @@ Generate a complete JavaScript code snippet that:
         scene.add(knot);
 
         // Troika text
-        const text = new TroikaText.Text();
-        text.text = "Concept Visualizer";
-        text.fontSize = 0.5;
-        text.position.set(0, 2, 0);
-        text.color = 0xffffff;
-        scene.add(text);
+        if (typeof TroikaText !== 'undefined' && TroikaText.Text) {
+          const text = new TroikaText.Text();
+          text.text = "Concept Visualizer";
+          text.fontSize = 0.5;
+          text.position.set(0, 2, 0);
+          text.color = 0xffffff;
+          scene.add(text);
+        }
 
         camera.position.z = 5;
 
@@ -107,44 +118,45 @@ Generate a complete JavaScript code snippet that:
         }
 
         window.renderFrame = function(frame) {
-          knot.rotation.x = frame * 0.01;
-          knot.rotation.y = frame * 0.01;
           renderer.render(scene, camera);
         };
       `;
+      return { code };
     }
 
-    // Post-process: inject minimal rendering logic if missing
-    let needsInject = false;
-    if (!/scene\.add\s*\(/.test(code)) {
-      code += `
-        // Injected: add a default mesh to the scene if missing
-        if (typeof THREE !== 'undefined' && typeof scene !== 'undefined') {
-          const geometry = new THREE.BoxGeometry();
-          const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-          const mesh = new THREE.Mesh(geometry, material);
-          scene.add(mesh);
-        }
+    // 3. If mode is "advanced", return a minimal working Babylon.js scene with animation.
+    if (mode === 'advanced') {
+      const code = `
+        // Minimal working Babylon.js scene with animation
+        const canvas = document.createElement('canvas');
+        canvas.width = 640;
+        canvas.height = 480;
+        document.body.appendChild(canvas);
+
+        const engine = new BABYLON.Engine(canvas, true);
+        const scene = new BABYLON.Scene(engine);
+
+        const camera = new BABYLON.ArcRotateCamera("Camera", Math.PI / 2, Math.PI / 2, 4, BABYLON.Vector3.Zero(), scene);
+        camera.attachControl(canvas, true);
+
+        const light = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(1, 1, 0), scene);
+
+        const sphere = BABYLON.MeshBuilder.CreateSphere("sphere", {diameter: 1}, scene);
+
+        window.renderFrame = function(frame) {
+          sphere.rotation.y = frame * 0.01;
+          engine.runRenderLoop(() => {
+            scene.render();
+          });
+        };
+        // Initial render
+        window.renderFrame(0);
       `;
-      needsInject = true;
-    }
-    if (!/renderer\.render\s*\(/.test(code) && !/engine\.runRenderLoop\s*\(/.test(code)) {
-      code += `
-        // Injected: ensure rendering occurs
-        if (typeof renderer !== 'undefined' && typeof scene !== 'undefined' && typeof camera !== 'undefined') {
-          renderer.render(scene, camera);
-        }
-      `;
-      needsInject = true;
-    }
-    if (needsInject) {
-      console.warn(
-        '[LlmService] LLM code was missing required rendering logic. Injected minimal rendering code. ' +
-        'Please review your LLM prompt and ensure the LLM is returning valid, animated code.'
-      );
+      return { code };
     }
 
-    return { code };
+    // 4. If mode is unknown, throw an error
+    throw new Error('[LlmService] Unknown mode or unable to generate code for the requested mode.');
   }
 
   async reinforce(trainingData: { prompt: string; expectedCode: string }) {

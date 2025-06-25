@@ -7,6 +7,12 @@ import { Injectable } from '@nestjs/common';
  */
 @Injectable()
 export class PhysicsService {
+  dragForce(dragCoefficient: any, arg1: number, density: any, velocity: any) {
+      throw new Error('Method not implemented.');
+  }
+  reynoldsNumber(density: any, velocity: any, arg2: number, viscosity: any) {
+      throw new Error('Method not implemented.');
+  }
   // Supported object types and their creation logic
   getSupportedObjects() {
     return [

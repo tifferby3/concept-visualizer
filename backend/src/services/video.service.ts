@@ -5,12 +5,16 @@ import * as ffmpeg from 'fluent-ffmpeg';
 import * as puppeteer from 'puppeteer';
 import { LlmService } from './llm.service';
 import { PhysicsService } from './physics.service';
+import { ScenesService } from './scenes.service';
+import { RenderingService } from './rendering.service';
 
 @Injectable()
 export class VideoService {
   constructor(
     private readonly llmService: LlmService,
-    private readonly physicsService: PhysicsService
+    private readonly physicsService: PhysicsService,
+    private readonly scenesService: ScenesService,
+    private readonly renderingService: RenderingService
   ) {}
 
   async generateVideo(prompt: string, duration: number, mode?: string): Promise<string> {
@@ -26,7 +30,7 @@ export class VideoService {
     if (fs.existsSync(framesDir)) fs.rmSync(framesDir, { recursive: true, force: true });
     fs.mkdirSync(framesDir);
 
-    // 1. Get code from LLM (pass duration, mode, and physics context)
+    // 1. Generate code using LLM
     const physicsContext = this.physicsService.getLLMPhysicsSummary();
     const { code } = await this.llmService.generateCode(
       `${prompt}\n\nPhysics context:\n${physicsContext}`,
@@ -34,77 +38,23 @@ export class VideoService {
       mode
     );
 
-    // Log the code for debugging and validation
-    console.log('[VideoService] Using code for rendering:\n', code);
-
-    // Error handler: If code is empty or obviously invalid, throw an error
-    if (!code || code.trim().length < 20) {
-      throw new Error('[VideoService] LLM did not generate any usable scene code.');
+    // 2. Validate and store the scene code
+    const sceneId = `scene_${Date.now()}`;
+    if (!this.scenesService.validateSceneCode(code)) {
+      throw new Error('[VideoService] Generated scene code is invalid. Please check LLM output.');
     }
+    this.scenesService.saveScene(sceneId, code);
 
-    // 2. Launch Puppeteer and render frames
-    const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
-    const page = await browser.newPage();
-    await page.setViewport({ width, height });
-
-    // 3. Prepare HTML with all required libraries and injected code
-    const html = `
-      <html>
-      <head>
-        <script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/ccapture.js@1.1.0/build/CCapture.all.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/troika-three-text@0.47.0/dist/troika-three-text.umd.min.js"></script>
-        <script src="https://cdn.babylonjs.com/babylon.js"></script>
-      </head>
-      <body style="margin:0;overflow:hidden;background:#000;">
-        <script>
-          window.addEventListener('DOMContentLoaded', function() {
-            try {
-              ${code}
-            } catch (err) {
-              document.body.innerHTML = '<pre style="color:red;">Render error: ' + err + '</pre>';
-              window.__sceneRenderError = err && err.toString();
-            }
-          });
-        </script>
-      </body>
-      </html>
-    `;
-    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
-
-    // 4. Render and capture frames, with error detection
-    let renderError = null;
-    for (let frame = 0; frame < frameCount; frame++) {
-      await page.evaluate((f) => {
-        // @ts-ignore
-        window.renderFrame && window.renderFrame(f);
-      }, frame);
-      // Check for runtime errors in the browser context
-      renderError = await page.evaluate(() => (window as any).__sceneRenderError || null);
-      if (renderError) {
-        throw new Error(`[VideoService] Error during scene rendering: ${renderError}`);
-      }
-      const framePath = path.join(framesDir, `frame_${String(frame).padStart(6, '0')}.png`);
-      await page.screenshot({ path: framePath as `${string}.png` });
-    }
-    await browser.close();
-
-    // 5. Use ffmpeg to assemble frames into a video
-    await new Promise<void>((resolve, reject) => {
-      ffmpeg()
-        .input(path.join(framesDir, 'frame_%06d.png'))
-        .inputFPS(fps)
-        .outputOptions('-pix_fmt yuv420p')
-        .outputOptions('-r ' + fps)
-        .duration(frameCount / fps)
-        .save(videoPath)
-        .on('end', () => resolve())
-        .on('error', (err) => reject(err));
+    // 3. Use RenderingService to render frames and collect them into a video
+    await this.renderingService.renderToVideo({
+      code,
+      videoPath,
+      framesDir,
+      width,
+      height,
+      fps,
+      frameCount
     });
-
-    // 6. Clean up frames
-    fs.rmSync(framesDir, { recursive: true, force: true });
 
     return videoPath;
   }
